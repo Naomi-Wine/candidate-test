@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Requests.Application.Common;
 using Requests.Application.Requests;
 
 namespace Requests.Api.Controllers;
@@ -15,11 +16,13 @@ public class RequestsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IReadOnlyList<RequestDto>>> Get(
+    public async Task<ActionResult<PagedResult<RequestDto>>> Get(
         [FromQuery] RequestFilterQuery query,
         CancellationToken cancellationToken)
     {
-        var (items, _) = await _service.SearchAsync(query.ToFilter(), cancellationToken);
-        return Ok(items);
+        var filter = query.ToFilter();
+        var (items, totalCount) = await _service.SearchAsync(filter, cancellationToken);
+
+        return Ok(new PagedResult<RequestDto>(items, totalCount, filter.Page, filter.PageSize));
     }
 }
