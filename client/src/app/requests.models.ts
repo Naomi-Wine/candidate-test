@@ -24,3 +24,27 @@ export interface PagedResult<T> {
   pageSize: number;
   totalPages: number;
 }
+
+// The client's sort allow-list. It mirrors the server's, because a value outside it is
+// a 400: the client must never generate one.
+export const SORTABLE_FIELDS = ['requestNumber', 'status', 'requestType', 'createdAt'] as const;
+
+export type SortField = (typeof SORTABLE_FIELDS)[number];
+
+export type SortDirection = 'asc' | 'desc';
+
+// One request's worth of search state, read from the URL. The filter fields stay
+// strings rather than the unions above: an unrecognised filter value is forwarded
+// deliberately so the server rejects it with ProblemDetails, instead of being
+// silently dropped and returning rows the caller did not ask for.
+export interface SearchCriteria {
+  requestNumber: string | null;
+  status: string[];
+  requestType: string | null;
+  fromDate: string | null;
+  toDate: string | null;
+  sortBy: SortField;
+  sortDir: SortDirection;
+  page: number;
+  pageSize: number;
+}
