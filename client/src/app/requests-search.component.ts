@@ -1,4 +1,5 @@
 import { AsyncPipe, DatePipe } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
@@ -8,22 +9,39 @@ import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
+import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSortModule, Sort } from '@angular/material/sort';
 import { MatTableModule } from '@angular/material/table';
 import { ActivatedRoute, Params, Router } from '@angular/router';
-import { merge } from 'rxjs';
-import { debounceTime, distinctUntilChanged, map, switchMap, tap } from 'rxjs/operators';
+import { BehaviorSubject, combineLatest, merge, of } from 'rxjs';
+import { catchError, debounceTime, distinctUntilChanged, map, startWith, switchMap, tap } from 'rxjs/operators';
 
 import {
+  PagedResult,
   REQUEST_STATUSES,
   REQUEST_TYPES,
+  RequestDto,
   SearchCriteria,
   SORTABLE_FIELDS,
   SortDirection,
   SortField
 } from './requests.models';
 import { RequestsService } from './requests.service';
+
+// The three states the screen can be in. Empty is not a fourth: it is `ready` with no
+// items, which the template distinguishes.
+type ViewState =
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string; unauthorized: boolean }
+  | { kind: 'ready'; criteria: SearchCriteria; result: PagedResult<RequestDto> };
+
+// Only the parts of the RFC 7807 body this screen reads.
+interface ProblemDetails {
+  title?: string;
+  detail?: string;
+  errors?: Record<string, string[]>;
+}
 
 @Component({
   selector: 'app-requests-search',
@@ -39,6 +57,7 @@ import { RequestsService } from './requests.service';
     MatFormFieldModule,
     MatInputModule,
     MatPaginatorModule,
+    MatProgressBarModule,
     MatSelectModule,
     MatSortModule,
     MatTableModule
@@ -63,6 +82,12 @@ export class RequestsSearchComponent {
     toDate: new FormControl<Date | null>(null)
   });
 
+  // True from the first keystroke, before the debounce has fired, so the screen does not
+  // sit frozen for 300ms. Goes false again if the text ends up matching the URL after
+  // all — type a character and delete it and no navigation follows, so nothing else
+  // would ever clear it.
+  private readonly typing$ = new BehaviorSubject<boolean>(false);
+
   // A queryParams emission is the only thing that triggers a fetch — see CLAUDE.md §6.
   // switchMap, never mergeMap: a superseded request is cancelled, so a slow earlier
   // response can never arrive late and overwrite a newer one.
@@ -71,15 +96,35 @@ export class RequestsSearchComponent {
   // router emits {} first, costing one discarded query per page load.
   // criteria travels with the result so the sort and paginator bindings read the URL
   // that produced these rows, never the component's own state.
-  readonly view$ = this.route.queryParams.pipe(
+  private readonly data$ = this.route.queryParams.pipe(
     map(params => this.toCriteria(params)),
-    tap(criteria => this.fillForm(criteria)),
+    tap(criteria => {
+      this.fillForm(criteria);
+      this.typing$.next(false);
+    }),
     switchMap(criteria =>
-      this.requestsService.search(criteria).pipe(map(result => ({ criteria, result })))
+      this.requestsService.search(criteria).pipe(
+        map((result): ViewState => ({ kind: 'ready', criteria, result })),
+        // catchError sits INSIDE the inner observable on purpose. Let an error reach the
+        // outer stream and switchMap's source completes: queryParams would keep emitting
+        // and nothing would ever fetch again. The URL would still change and the page
+        // would look recovered while being dead.
+        catchError((error: HttpErrorResponse) => of(toErrorState(error))),
+        startWith<ViewState>({ kind: 'loading' })
+      )
     )
   );
 
+  readonly state$ = combineLatest([this.data$, this.typing$]).pipe(
+    map(([state, typing]): ViewState => (typing ? { kind: 'loading' } : state))
+  );
+
   constructor() {
+    // Every keystroke, undebounced: this only drives the progress bar.
+    this.form.controls.requestNumber.valueChanges
+      .pipe(takeUntilDestroyed())
+      .subscribe(value => this.typing$.next(value !== (this.currentCriteria().requestNumber ?? '')));
+
     // Text only. The debounce sits here, before the navigation, so six keystrokes
     // produce one URL change and one history entry — not one of each per keystroke.
     this.form.controls.requestNumber.valueChanges
@@ -252,4 +297,30 @@ function fromUtcIso(iso: string | null): Date | null {
   return Number.isNaN(parsed.getTime())
     ? null
     : new Date(parsed.getUTCFullYear(), parsed.getUTCMonth(), parsed.getUTCDate());
+}
+
+function toErrorState(error: HttpErrorResponse): ViewState {
+  const problem: ProblemDetails = error.error ?? {};
+
+  // A 401 body carries only {"title":"Unauthorized"}, which tells the reader nothing
+  // about what to do, so this case says what actually went wrong.
+  if (error.status === 401) {
+    return {
+      kind: 'error',
+      unauthorized: true,
+      message: 'The server did not recognise the user id sent in X-User-Id.'
+    };
+  }
+
+  // [ApiController] returns ValidationProblemDetails, where `title` is always the generic
+  // "One or more validation errors occurred." and the message worth reading is in
+  // `errors`. Falling back to title alone would show exactly the useless text the task
+  // rules out.
+  const messages = Object.values(problem.errors ?? {}).flat();
+
+  return {
+    kind: 'error',
+    unauthorized: false,
+    message: messages.length > 0 ? messages.join(' ') : problem.detail ?? problem.title ?? error.message
+  };
 }

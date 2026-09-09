@@ -43,61 +43,91 @@
 </form>
 
 <!-- async pipe, so there is no manual subscribe and no manual unsubscribe. -->
-@if (view$ | async; as view) {
-  <!-- Plain array as the data source, and no dataSource.sort / dataSource.paginator.
-       Those would sort and page the 25 rows already in memory and return a wrong
-       answer that looks right — CLAUDE.md §6 rule 2. MatSort and MatPaginator below
-       are event sources only; the URL drives what is actually shown.
-       matSortDisableClear keeps the direction out of its empty third state, which the
-       API cannot express. -->
-  <table
-    mat-table
-    [dataSource]="view.result.items"
-    matSort
-    matSortDisableClear
-    [matSortActive]="view.criteria.sortBy"
-    [matSortDirection]="view.criteria.sortDir"
-    (matSortChange)="onSortChange($event)"
-  >
-    <ng-container matColumnDef="requestNumber">
-      <th mat-header-cell *matHeaderCellDef mat-sort-header>Request number</th>
-      <td mat-cell *matCellDef="let request">{{ request.requestNumber }}</td>
-    </ng-container>
+@if (state$ | async; as state) {
+  @switch (state.kind) {
+    @case ('loading') {
+      <div role="status" aria-live="polite">
+        <mat-progress-bar mode="indeterminate" />
+        <p>Searching…</p>
+      </div>
+    }
 
-    <ng-container matColumnDef="status">
-      <th mat-header-cell *matHeaderCellDef mat-sort-header>Status</th>
-      <td mat-cell *matCellDef="let request">{{ request.status }}</td>
-    </ng-container>
+    @case ('error') {
+      <div role="alert">
+        @if (state.unauthorized) {
+          <h2>Not signed in</h2>
+        } @else {
+          <h2>That search was rejected</h2>
+        }
+        <p>{{ state.message }}</p>
+      </div>
+    }
 
-    <ng-container matColumnDef="requestType">
-      <th mat-header-cell *matHeaderCellDef mat-sort-header>Type</th>
-      <td mat-cell *matCellDef="let request">{{ request.requestType }}</td>
-    </ng-container>
+    @case ('ready') {
+      @if (state.result.items.length === 0) {
+        <div>
+          <h2>No results match the filter</h2>
+          <p>Nothing here matches what you are filtering by. Clear the filter to start again.</p>
+          <button mat-button type="button" (click)="reset()">Clear filter</button>
+        </div>
+      } @else {
+        <!-- Plain array as the data source, and no dataSource.sort / dataSource.paginator.
+             Those would sort and page the 25 rows already in memory and return a wrong
+             answer that looks right — CLAUDE.md §6 rule 2. MatSort and MatPaginator below
+             are event sources only; the URL drives what is actually shown.
+             matSortDisableClear keeps the direction out of its empty third state, which
+             the API cannot express. -->
+        <table
+          mat-table
+          [dataSource]="state.result.items"
+          matSort
+          matSortDisableClear
+          [matSortActive]="state.criteria.sortBy"
+          [matSortDirection]="state.criteria.sortDir"
+          (matSortChange)="onSortChange($event)"
+        >
+          <ng-container matColumnDef="requestNumber">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header>Request number</th>
+            <td mat-cell *matCellDef="let request">{{ request.requestNumber }}</td>
+          </ng-container>
 
-    <ng-container matColumnDef="createdAt">
-      <th mat-header-cell *matHeaderCellDef mat-sort-header>Created</th>
-      <td mat-cell *matCellDef="let request">{{ request.createdAt | date: 'short' }}</td>
-    </ng-container>
+          <ng-container matColumnDef="status">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header>Status</th>
+            <td mat-cell *matCellDef="let request">{{ request.status }}</td>
+          </ng-container>
 
-    <!-- No mat-sort-header: owner/assignee is outside the server's sort allow-list. -->
-    <ng-container matColumnDef="ownerAssignee">
-      <th mat-header-cell *matHeaderCellDef>Owner / assignee</th>
-      <td mat-cell *matCellDef="let request">
-        {{ request.ownerId }} / {{ request.assignedToUserId ?? '—' }}
-      </td>
-    </ng-container>
+          <ng-container matColumnDef="requestType">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header>Type</th>
+            <td mat-cell *matCellDef="let request">{{ request.requestType }}</td>
+          </ng-container>
 
-    <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
-    <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
-  </table>
+          <ng-container matColumnDef="createdAt">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header>Created</th>
+            <td mat-cell *matCellDef="let request">{{ request.createdAt | date: 'short' }}</td>
+          </ng-container>
 
-  <!-- pageIndex = page - 1 is the first of exactly two places the 0-based/1-based
-       conversion happens; the second is onPage in the component. -->
-  <mat-paginator
-    [length]="view.result.totalCount"
-    [pageIndex]="view.criteria.page - 1"
-    [pageSize]="view.criteria.pageSize"
-    [pageSizeOptions]="pageSizeOptions"
-    (page)="onPage($event)"
-  />
+          <!-- No mat-sort-header: owner/assignee is outside the server's sort allow-list. -->
+          <ng-container matColumnDef="ownerAssignee">
+            <th mat-header-cell *matHeaderCellDef>Owner / assignee</th>
+            <td mat-cell *matCellDef="let request">
+              {{ request.ownerId }} / {{ request.assignedToUserId ?? '—' }}
+            </td>
+          </ng-container>
+
+          <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+          <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
+        </table>
+
+        <!-- pageIndex = page - 1 is the first of exactly two places the 0-based/1-based
+             conversion happens; the second is onPage in the component. -->
+        <mat-paginator
+          [length]="state.result.totalCount"
+          [pageIndex]="state.criteria.page - 1"
+          [pageSize]="state.criteria.pageSize"
+          [pageSizeOptions]="pageSizeOptions"
+          (page)="onPage($event)"
+        />
+      }
+    }
+  }
 }
