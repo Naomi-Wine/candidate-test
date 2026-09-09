@@ -1,4 +1,3 @@
-using Microsoft.EntityFrameworkCore;
 using Requests.Application.Requests;
 using Requests.Domain.Entities;
 using Requests.Infrastructure.Persistence;
@@ -14,8 +13,5 @@ public sealed class RequestRepository : IRequestRepository
         _db = db;
     }
 
-    public Task<List<Request>> GetAllAsync(CancellationToken cancellationToken = default)
-    {
-        return _db.Requests.ToListAsync(cancellationToken);
-    }
+    public IQueryable<Request> Query() => _db.Requests;
 }

@@ -19,7 +19,7 @@ public class RequestsController : ControllerBase
         [FromQuery] RequestFilterQuery query,
         CancellationToken cancellationToken)
     {
-        var result = await _service.GetRequestsAsync(cancellationToken);
-        return Ok(result);
+        var (items, _) = await _service.SearchAsync(query.ToFilter(), cancellationToken);
+        return Ok(items);
     }
 }
