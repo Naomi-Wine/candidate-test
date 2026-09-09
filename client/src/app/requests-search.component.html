@@ -1,3 +1,15 @@
+<!-- Outside the filter form: the user is not a filter, and Reset must not clear it.
+     The client sends an id and nothing else - the role behind it is read from the
+     database server-side. -->
+<mat-form-field>
+  <mat-label>User</mat-label>
+  <mat-select [value]="currentUserId" (selectionChange)="onUserChange($event.value)">
+    @for (user of users; track user.id) {
+      <mat-option [value]="user.id">{{ user.displayName }}</mat-option>
+    }
+  </mat-select>
+</mat-form-field>
+
 <form [formGroup]="form">
   <mat-form-field>
     <mat-label>Request number</mat-label>

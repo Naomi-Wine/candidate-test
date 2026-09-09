@@ -25,9 +25,11 @@ import {
   SearchCriteria,
   SORTABLE_FIELDS,
   SortDirection,
-  SortField
+  SortField,
+  USERS
 } from './requests.models';
 import { RequestsService } from './requests.service';
+import { setCurrentUserId } from './user-id.interceptor';
 
 // The three states the screen can be in. Empty is not a fourth: it is `ready` with no
 // items, which the template distinguishes.
@@ -71,8 +73,13 @@ export class RequestsSearchComponent {
 
   readonly displayedColumns = ['requestNumber', 'status', 'requestType', 'createdAt', 'ownerAssignee'];
   readonly pageSizeOptions = [10, 25, 50, 100];
+  readonly users = USERS;
   readonly statuses = REQUEST_STATUSES;
   readonly types = REQUEST_TYPES;
+
+  // Mirrors the URL so the select shows the right name, exactly as fillForm mirrors it
+  // into the filter controls.
+  currentUserId = 1;
 
   readonly form = new FormGroup({
     requestNumber: new FormControl<string>('', { nonNullable: true }),
@@ -99,6 +106,10 @@ export class RequestsSearchComponent {
   private readonly data$ = this.route.queryParams.pipe(
     map(params => this.toCriteria(params)),
     tap(criteria => {
+      // Runs before switchMap issues the request, so the interceptor already holds the
+      // id this URL asks for.
+      setCurrentUserId(criteria.userId);
+      this.currentUserId = criteria.userId;
       this.fillForm(criteria);
       this.typing$.next(false);
     }),
@@ -168,6 +179,13 @@ export class RequestsSearchComponent {
     );
   }
 
+  // Switching user is a navigation like any other, so it refetches through the same
+  // queryParams -> switchMap path rather than adding a second fetch trigger, and it picks
+  // up the page reset from navigateTo without repeating the rule.
+  onUserChange(userId: number): void {
+    this.navigateTo({ ...this.currentCriteria(), userId }, {});
+  }
+
   // MatPaginator is an event source only, for the same reason.
   onPage(event: PageEvent): void {
     const current = this.currentCriteria();
@@ -223,7 +241,8 @@ export class RequestsSearchComponent {
         // is the only exception. The rule lives here, in the one place that builds the
         // params, so no caller can forget it.
         page: options.paging === true ? criteria.page : 1,
-        pageSize: criteria.pageSize
+        pageSize: criteria.pageSize,
+        userId: criteria.userId
       },
       replaceUrl: options.fromTextInput === true
     });
@@ -265,7 +284,8 @@ export class RequestsSearchComponent {
       sortBy: SORTABLE_FIELDS.includes(params['sortBy'] as SortField) ? params['sortBy'] : 'createdAt',
       sortDir: params['sortDir'] === 'asc' ? 'asc' : 'desc',
       page: positiveInt(params['page'], 1),
-      pageSize: positiveInt(params['pageSize'], 25)
+      pageSize: positiveInt(params['pageSize'], 25),
+      userId: positiveInt(params['userId'], 1)
     };
   }
 }

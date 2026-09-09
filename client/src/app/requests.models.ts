@@ -11,6 +11,18 @@ export const REQUEST_TYPES = ['General', 'Legal', 'Payment', 'Appeal'] as const;
 
 export type RequestType = (typeof REQUEST_TYPES)[number];
 
+// The seeded users, for the switcher, labelled by display name. Only the id ever leaves
+// the client, in the X-User-Id header. Which of these is an administrator is the
+// server's business: the client neither sends nor infers a role.
+export const USERS = [
+  { id: 1, displayName: 'Dana Levi' },
+  { id: 2, displayName: 'Noa Cohen' },
+  { id: 3, displayName: 'Yossi Mizrahi' },
+  { id: 4, displayName: 'Amit Bar' },
+  { id: 5, displayName: 'Tal Shapira' },
+  { id: 99, displayName: 'System Administrator' }
+];
+
 export interface RequestDto {
   id: number;
   requestNumber: string;
@@ -53,4 +65,9 @@ export interface SearchCriteria {
   sortDir: SortDirection;
   page: number;
   pageSize: number;
+  // Not a filter, and never a query parameter on the API call — it rides in the
+  // X-User-Id header. It lives in the URL because a queryParams emission is the only
+  // thing allowed to trigger a fetch (CLAUDE.md §6 rule 1), so switching user has to be
+  // a navigation like every other change.
+  userId: number;
 }
