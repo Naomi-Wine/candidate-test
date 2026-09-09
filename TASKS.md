@@ -10,6 +10,18 @@ touches the request or response shape — it is the source of truth.
 **Do not** start the next task. **Do not** implement part of a later task because you
 are already in the file. **Do not** refactor anything the current task does not name.
 
+> **The scope of a task is a ceiling, not a floor.**
+>
+> The brief this project answers says: *"מעדיפים פתרון פשוט, ברור ומנומק על פני מורכב
+> שלא נדרש"* — a simple, clear, well-reasoned solution is preferred over unnecessary
+> complexity. Every task below is written to be satisfied by the smallest obvious
+> implementation.
+>
+> If a task can be completed in fifteen lines, completing it in eighty is a failure of
+> the task, not a more thorough version of it. Before reporting, re-read what you wrote
+> and delete anything that is not required for the task's "Done when" to hold.
+> `CLAUDE.md` §2 lists the specific forms this mistake takes here.
+
 ---
 
 ## Order and budget
@@ -39,11 +51,17 @@ are already in the file. **Do not** refactor anything the current task does not 
 | 15 | User switcher | must | 20m |
 | **Finish** | | | |
 | 16 | README completion | must | 30m |
-| 17 | Part B — architecture document | must | 40m |
+| 17 | Request flow diagram | should | 20m |
 
-Roughly 8.5 hours. If time runs short, task 09 is the one to cut — the brief marks tests
-optional. Task 17 is required by the brief and cannot be cut. If anything is cut, it is
-recorded honestly in the README's "What was not completed" section.
+Roughly 8 hours. If time runs short, cut task 09 first (the brief marks tests optional),
+then task 17. Anything cut is recorded honestly in the README's "What was not completed"
+section.
+
+> **Part B of the brief — the microservices design — is deliberately outside this plan.**
+> It is authored separately by the repository owner, not through this workflow. Do not
+> create `docs/ARCHITECTURE.md`, do not draft its content, and do not fill the README
+> TODO that points at it. It is a required deliverable of the exercise, but it is not
+> your task.
 
 ### Mapping from the previous plan
 
@@ -740,52 +758,63 @@ match what was actually built; correct them if the implementation diverged.
 already satisfied by the InMemory vs SQLite entry. Do not add a second one unless there
 is time to spare.
 
-**Done when.** No `TODO` comment remains in `README.md`, and every command in it has been
-run and works.
+**Leave one TODO in place.** The Part B summary — `<!-- TODO(task 17): one-paragraph
+summary here, diagram linked. -->` — points at `docs/ARCHITECTURE.md`, which is authored
+outside this plan. Do not fill it, do not remove it, and do not write that document. It is
+the only TODO that survives this task.
+
+**Done when.** Exactly one `TODO` remains in `README.md` (the Part B one), and every
+command in the README has been run and works.
 
 **Verify.**
 
 ```bash
-grep -n "TODO" README.md      # must return nothing
+grep -n "TODO" README.md      # exactly one line, the Part B summary
 ```
 
 Then run every command the README lists, from a clean shell, and report the results.
 
 ---
 
-## Task 17 — Part B: architecture document
+## Task 17 — Request flow diagram
 
-**Goal.** `docs/ARCHITECTURE.md` — the microservices question from the brief.
+**Goal.** One picture of what actually happens when the user types a character, added to
+the README.
 
-**Scope.** Two parts, both required by the brief:
+**Why.** The decision log explains each choice in isolation and the README summarises the
+technology, but nothing shows the whole path in a single view. This is the artefact that
+turns "walk me through what happens when someone types in the search box" into a
+thirty-second answer.
 
-1. **A possible decomposition into microservices, and the benefits it would buy.** A
-   diagram, a sketch, a short document, or a combination.
-2. **The scenario:** when a Request is created or changes status, a notification is sent
-   to the relevant user, and the notification system may be temporarily unavailable.
-   Explain how you would design reliable communication between the services.
+**Scope.** A short section in `README.md`, placed after "Technology choices", containing:
 
-Cover, at minimum: asynchronous messaging rather than a synchronous call; the outbox
-pattern so the state change and the message commit together; retries with backoff; a
-dead-letter queue; and idempotent consumers, since at-least-once delivery means duplicates.
+1. **One Mermaid sequence diagram** of a single search, end to end:
+   text input → debounce 300ms → navigate (URL changes) → `queryParams` emits →
+   `switchMap` cancels any in-flight request → `HttpClient` with the `X-User-Id`
+   interceptor → controller → `ICurrentUser` → service → permission filter on the
+   `IQueryable` → filters → `CountAsync` → order, page, project → `PagedResult` → table,
+   paginator and sort arrow all rendered from the URL.
+2. **Three sentences underneath**, no more, naming the three properties the diagram makes
+   visible: the URL is the only trigger, nothing is materialised before the final page is
+   taken, and the permission filter runs before the count.
 
-Link it from the README's Part B section with a one-paragraph summary.
+**Describe what was actually built.** Read the code as it now stands and draw that. If the
+implementation diverged from the description above, the diagram follows the code and the
+divergence is reported.
 
-**Keep it proportionate.** This is a design answer, not an implementation. No code, no
-new projects.
+**Do not** add a new document, a decision log, or a second diagram. The reasoning already
+lives in `docs/DECISIONS.he.md` and the README; this task adds a picture, not prose.
 
-**Done when.** `docs/ARCHITECTURE.md` answers both parts, and the README links to it with
-a summary paragraph.
+**Done when.** The README renders one Mermaid diagram, the flow in it matches the code,
+and nothing else was added.
 
 **Verify.**
 
 ```bash
-test -f docs/ARCHITECTURE.md && echo "exists"
-grep -n "ARCHITECTURE.md" README.md      # the link must resolve
+grep -c "^.\{0,3\}mermaid" README.md    # exactly 1
 ```
 
-Report which of the five reliability mechanisms above the document actually covers, and
-name any it deliberately omits.
+Report the diagram source in your report so it can be read without opening the file.
 
 ---
 

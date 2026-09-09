@@ -24,9 +24,22 @@ The brief states two things that govern every decision here:
 It also states that the author must be able to **explain every line** and may be asked
 to **change part of the solution live** in a follow-up interview.
 
-Practical consequence for you: prefer the smallest correct implementation. Code that is
-clever, generic, or "future-proof" is worse than code that is obvious, because obvious
-code can be defended and modified under questioning.
+### The governing rule of this repository
+
+> **The simplest implementation that satisfies the task is the correct one.
+> Anything beyond it is a defect, even if the code works.**
+
+This is not a stylistic preference. It is the explicit instruction in the brief, and it
+is what is being assessed. A reviewer reading this repository is asking "did she build
+what was needed, and can she explain it?" — not "how much did she build?".
+
+When two implementations both satisfy the task, the shorter and more obvious one wins,
+every time. When you find yourself about to add something the task did not ask for
+because it feels more professional, more extensible, or more complete — **that is the
+moment to stop and not add it.**
+
+Code that is clever, generic, or "future-proof" is worse here than code that is obvious,
+because obvious code can be defended and modified live in an interview.
 
 ---
 
@@ -52,6 +65,34 @@ them mid-task, and do not "prepare the ground" for them.
 | New endpoints beyond `GET /api/requests` | The contract defines one |
 
 If a task seems to require one of these, **stop and ask.** Do not decide unilaterally.
+
+### Over-engineering — concrete forms it takes here
+
+The list above catches the large mistakes. These are the small ones, which are far more
+likely, because each feels harmless on its own. **None of them may be added unless the
+task explicitly asks for it.**
+
+- An interface with exactly one implementation, added "for testability". The existing
+  interfaces are enough.
+- A base class, abstract class, or generic type introduced for a single use.
+- A helper, extension method, utility class, or constants file used in one place. Inline
+  it.
+- An options / configuration class wrapping values that are constants.
+- A new folder for a single file.
+- A DTO, view model, or mapping layer that mirrors an existing type with no change.
+- `try`/`catch` that logs and rethrows, or that swallows. Exception handling is
+  centralised — see §5.
+- Defensive null checks and guard clauses for states that cannot occur on this code path.
+- XML doc comments on everything. Comment the non-obvious constraint, nothing else.
+- An Angular service, module, or component split out "for structure" when the code lives
+  fine in the component the task names.
+- `async` plumbing, `IAsyncEnumerable`, or cancellation wiring beyond the
+  `CancellationToken` already threaded through.
+- Retries, caching, memoisation, or performance work that no task requested.
+- Tests beyond the five named in task 09.
+
+If you believe one of these is genuinely necessary for the task to work, do not add it
+silently: implement the simple version, and raise the point under "Notes for review".
 
 ---
 
@@ -190,9 +231,16 @@ For each task:
 1. Re-read the task in `TASKS.md` and the sections of this file it references.
 2. Implement exactly what the task specifies — no more.
 3. Run the verification commands listed in the task.
-4. **Stop. Do not continue to the next task.**
-5. Report using the template below.
-6. Wait for the go-ahead.
+4. Produce the diff for review by running, yourself:
+   `git add -A && git diff --cached --stat && git diff --cached`
+   Staging is required — new files do not appear in a plain `git diff`, and most tasks
+   create new files. This stages but does not commit.
+5. **Stop. Do not continue to the next task. Do not commit.**
+6. Report using the template below.
+7. Wait for the go-ahead. Commit only when told to.
+
+The author does not run commands. Every command this protocol needs, you run, and you
+paste the real output into the report.
 
 ### Report template
 
@@ -205,8 +253,14 @@ For each task:
 - path/to/file.cs — what changed and why (one line each)
 
 **Verification**
-- <command that was run> → <actual result>
-- <command that was run> → <actual result>
+- <command that was run> → <actual output, not a summary of it>
+- <command that was run> → <actual output, not a summary of it>
+
+**New abstractions introduced**
+List every interface, base class, generic type, helper, extension method, options class,
+new folder, or new file that the task did not explicitly require — each with a one-line
+justification. Write "none" if there are none. See §2: on this project, "none" is the
+expected answer for most tasks.
 
 **What broke, and what I did about it**
 - <regression found, or "nothing">
@@ -218,8 +272,17 @@ For each task:
 - <anything a reviewer should look at closely>
 - <any assumption I had to make>
 
+**Diff**
+<output of `git diff --cached --stat`>
+
+<output of `git diff --cached`>
+
 **Next task:** NN+1 — <title>
 ```
+
+**On large diffs.** For files produced verbatim by a generator (`ng new`, `ng add`), do
+not paste their contents. List them under the stat, state that they are unmodified
+generator output, and include the full diff only for files you wrote or edited by hand.
 
 The **Verification** and **What broke** sections are the point of the report. Report the
 actual output of the commands, not a summary of what you expected them to print. If a
@@ -247,6 +310,9 @@ A task is done only when all of these hold:
 - For frontend tasks, `npm run build` succeeds in `client/`
 - The task's own "Done when" criteria are met and were actually checked
 - Nothing outside the task's stated scope changed
+- **Nothing was added that the task did not ask for** — see §2. If you cannot delete a
+  line and still satisfy the task, it belongs; if you can, it does not
+- The report includes the real diff and the "New abstractions introduced" section
 
 ---
 
