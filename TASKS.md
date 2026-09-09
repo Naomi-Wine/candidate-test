@@ -48,7 +48,7 @@ are already in the file. **Do not** refactor anything the current task does not 
 | 14 | Loading, error and empty states | must | 25m |
 | 15 | User switcher | must | 20m |
 | **Backend tests — deferred, see below** | | | |
-| 09 | Five meaningful tests | should | 35m |
+| 09 | Six meaningful tests | should | 35m |
 | **Finish** | | | |
 | 16 | README completion | must | 30m |
 | 17 | Request flow diagram | should | 20m |
@@ -468,7 +468,7 @@ All four query cases must be `400`; both identity cases `401`.
 
 # Backend tests
 
-## Task 09 — Five meaningful tests
+## Task 09 — Six meaningful tests
 
 > **Deferred: build this after task 15, not after task 08.** See "Order and budget" above
 > for the reasoning. The section stays here so the backend tasks read in one place; the
@@ -485,13 +485,35 @@ Prefer **one integration test through `WebApplicationFactory`** over several uni
 that mock the query away — the failure being guarded against is a filter that quietly
 does not reach the query, and a mocked repository cannot catch that.
 
-The five cases:
+The six cases:
 
-1. A standard user sees only owned-or-assigned rows — the permission boundary.
+1. A standard user sees only owned-or-assigned rows — the permission boundary — and
+   `totalCount` reflects only those rows. The count assertion is what pins that the
+   permission filter is applied before `CountAsync` (§5 rule 7): a filter applied after
+   the count leaks the real total while the rows still look correct.
 2. An administrator sees everything.
-3. Filters combine correctly — status **and** date range together.
-4. `sortBy` outside the allow-list returns `400`.
-5. `pageSize` above the ceiling returns `400`.
+3. Filters combine correctly — status **and** date range together — with `totalCount`
+   asserted as well, and with `toDate` chosen on the boundary day so the whole-day
+   inclusivity of `CreatedAt < toDate.AddDays(1)` is pinned at the same time.
+4. One `[Theory]`: every invalid input in the contract's error table returns `400` with
+   a `ProblemDetails` body. The cases are the contract's own rows — an unrecognised enum,
+   `sortBy` outside the allow-list, `pageSize` above the ceiling, `page` below 1, and
+   `fromDate` later than `toDate`. One test method rather than five, because all five
+   exercise the same ModelState-to-`ProblemDetails` path; `[InlineData]` keeps each case
+   visible in the test output.
+5. One `[Theory]`: every identity failure in the contract returns `401` — a missing
+   `X-User-Id`, a malformed one, and one naming a user that does not exist. The
+   missing-header case is the one that matters most: it pins that a request with no
+   identity is rejected rather than silently becoming user 1, which is the fail-open flaw
+   decision 010 identifies as severe.
+6. Paging is stable across pages: page 1 and page 2, sorted by a low-cardinality field,
+   share no row and skip none. Without the `.ThenBy(r => r.Id)` tie-breaker (§5 rule 5)
+   rows sharing a sort value can appear on two pages or vanish between them — a wrong
+   answer that looks entirely correct.
+
+`500` is deliberately not tested. Reaching it requires injecting a faulty dependency into
+the test host, which is real test infrastructure for one weak assertion, and it is the
+only row in the table that no user input can produce.
 
 Each test's name states the behaviour it pins.
 
