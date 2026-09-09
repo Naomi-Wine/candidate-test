@@ -15,7 +15,6 @@ public static class DependencyInjection
             options.UseInMemoryDatabase("CandidateRequests"));
 
         services.AddScoped<IRequestRepository, RequestRepository>();
-        services.AddScoped<IRequestService, RequestService>();
 
         return services;
     }
