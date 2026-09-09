@@ -10,4 +10,6 @@ public class RequestsDbContext : DbContext
     }
 
     public DbSet<Request> Requests => Set<Request>();
+
+    public DbSet<User> Users => Set<User>();
 }

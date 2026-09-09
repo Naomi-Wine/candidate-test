@@ -6,6 +6,21 @@ public static class DbSeeder
 {
     public static void Seed(RequestsDbContext db)
     {
+        if (!db.Users.Any())
+        {
+            // Ids 1-5 are the users the request seed below references
+            // (OwnerId and AssignedToUserId are both in 1..5). Id 99 is the administrator.
+            db.Users.AddRange(
+                new User { Id = 1, DisplayName = "Dana Levi", Role = UserRole.Standard },
+                new User { Id = 2, DisplayName = "Noa Cohen", Role = UserRole.Standard },
+                new User { Id = 3, DisplayName = "Yossi Mizrahi", Role = UserRole.Standard },
+                new User { Id = 4, DisplayName = "Amit Bar", Role = UserRole.Standard },
+                new User { Id = 5, DisplayName = "Tal Shapira", Role = UserRole.Standard },
+                new User { Id = 99, DisplayName = "System Administrator", Role = UserRole.Administrator });
+
+            db.SaveChanges();
+        }
+
         if (db.Requests.Any())
             return;
 
