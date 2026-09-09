@@ -1,9 +1,15 @@
 // Mirrors docs/API-CONTRACT.md. Enums cross the wire as strings, which is why these
 // are string unions and not TypeScript enums: the wire value is the display value and
 // the form-control value, so no translation map is needed anywhere.
-export type RequestStatus = 'New' | 'InProgress' | 'Completed' | 'Cancelled';
+// Runtime arrays because the filter dropdowns need to iterate them; the unions are
+// derived so the values exist in exactly one place.
+export const REQUEST_STATUSES = ['New', 'InProgress', 'Completed', 'Cancelled'] as const;
 
-export type RequestType = 'General' | 'Legal' | 'Payment' | 'Appeal';
+export type RequestStatus = (typeof REQUEST_STATUSES)[number];
+
+export const REQUEST_TYPES = ['General', 'Legal', 'Payment', 'Appeal'] as const;
+
+export type RequestType = (typeof REQUEST_TYPES)[number];
 
 export interface RequestDto {
   id: number;
