@@ -39,8 +39,6 @@ are already in the file. **Do not** refactor anything the current task does not 
 | 06 | Push permission, filtering, sorting and paging into the query | must | 45m |
 | 07 | `PagedResult<T>` envelope | must | 15m |
 | 08 | Validation and `ProblemDetails` | must | 25m |
-| **Backend tests** | | | |
-| 09 | Five meaningful tests | should | 35m |
 | **Frontend spine** | | | |
 | 10 | Angular app, Material, proxy, first real call | must | 45m |
 | 11 | The URL-driven data pipeline | must | 40m |
@@ -49,6 +47,8 @@ are already in the file. **Do not** refactor anything the current task does not 
 | 13 | Sorting and paging | must | 40m |
 | 14 | Loading, error and empty states | must | 25m |
 | 15 | User switcher | must | 20m |
+| **Backend tests — deferred, see below** | | | |
+| 09 | Five meaningful tests | should | 35m |
 | **Finish** | | | |
 | 16 | README completion | must | 30m |
 | 17 | Request flow diagram | should | 20m |
@@ -56,6 +56,17 @@ are already in the file. **Do not** refactor anything the current task does not 
 Roughly 8 hours. If time runs short, cut task 09 first (the brief marks tests optional),
 then task 17. Anything cut is recorded honestly in the README's "What was not completed"
 section.
+
+**Task 09 is deliberately deferred until after task 15.** It runs between 15 and 16, in
+the position shown above. The reasoning: this plan already names 09 as the first thing to
+cut if time runs short, every task from 10 to 15 is a `must`, and nothing in 10 to 15
+depends on it — the frontend consumes the HTTP contract, not the test project. Running the
+`must` work first means a shortfall costs the optional task rather than a required one.
+This is a reordering, not a cut: 09 is still to be built.
+
+The two tests already in `tests/Requests.Tests/RequestServiceTests.cs` stay where they are
+and keep passing in the meantime, so `dotnet test` remains part of the definition of done
+for every task in between.
 
 > **Part B of the brief — the microservices design — is deliberately outside this plan.**
 > It is authored separately by the repository owner, not through this workflow. Do not
@@ -459,6 +470,10 @@ All four query cases must be `400`; both identity cases `401`.
 
 ## Task 09 — Five meaningful tests
 
+> **Deferred: build this after task 15, not after task 08.** See "Order and budget" above
+> for the reasoning. The section stays here so the backend tasks read in one place; the
+> execution order is the one in the table.
+
 **Goal.** Few, deliberate tests that pin behaviour. The brief asks for meaningful cases,
 not coverage.
 
@@ -750,6 +765,25 @@ both the rows and `totalCount`.
 4. Test commands and what the tests actually cover.
 5. **"What was not completed"** — write this last, honestly, from what actually ran out of
    time. Only keep a claim you would be comfortable being questioned on.
+   - **TODO:** record the paging overflow found in task 08. Measured against the running
+     API, not theorised: `?page=2147483647&pageSize=100` returns `200` carrying page 1's
+     rows instead of an empty page, because `(Page - 1) * PageSize` overflows `int`
+     unchecked and `Skip` is handed a negative number, which skips nothing. Task 08
+     gave `page` a lower bound of 1 but no ceiling, so the input is accepted. It is a
+     wrong answer served as a success.
+6. **"Permissions and identity"** — a short section. **TODO:** cover, briefly:
+   - the role is read from the database and is never sent by the client;
+   - `X-Is-Admin` was removed because a permission the client declares is not a
+     permission;
+   - `UserRole` is an enum rather than a bool because a role grows;
+   - the permission filter is applied to the `IQueryable` before the count and before
+     paging, so `totalCount` cannot be bypassed from the client;
+   - `X-User-Id` is a development-only identity stub, not authentication — in production
+     the id would arrive as a claim in a signed JWT, and the stub is registered only
+     under `IsDevelopment()`.
+
+   This is a summary of what was built. It is **not** a second "Technical decision with
+   alternatives" entry — see the note below, which still holds.
 
 The frontend technology notes under "Technology choices" are already written. Verify they
 match what was actually built; correct them if the implementation diverged.
