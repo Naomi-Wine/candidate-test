@@ -1,4 +1,4 @@
-import { AsyncPipe } from '@angular/common';
+import { AsyncPipe, DatePipe } from '@angular/common';
 import { Component, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
@@ -7,7 +7,9 @@ import { MatNativeDateModule } from '@angular/material/core';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
+import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { MatSelectModule } from '@angular/material/select';
+import { MatSortModule, Sort } from '@angular/material/sort';
 import { MatTableModule } from '@angular/material/table';
 import { ActivatedRoute, Params, Router } from '@angular/router';
 import { merge } from 'rxjs';
@@ -18,6 +20,7 @@ import {
   REQUEST_TYPES,
   SearchCriteria,
   SORTABLE_FIELDS,
+  SortDirection,
   SortField
 } from './requests.models';
 import { RequestsService } from './requests.service';
@@ -26,6 +29,7 @@ import { RequestsService } from './requests.service';
   selector: 'app-requests-search',
   imports: [
     AsyncPipe,
+    DatePipe,
     ReactiveFormsModule,
     MatButtonModule,
     MatDatepickerModule,
@@ -34,7 +38,9 @@ import { RequestsService } from './requests.service';
     MatNativeDateModule,
     MatFormFieldModule,
     MatInputModule,
+    MatPaginatorModule,
     MatSelectModule,
+    MatSortModule,
     MatTableModule
   ],
   templateUrl: './requests-search.component.html'
@@ -44,7 +50,8 @@ export class RequestsSearchComponent {
   private readonly router = inject(Router);
   private readonly requestsService = inject(RequestsService);
 
-  readonly displayedColumns = ['requestNumber', 'status'];
+  readonly displayedColumns = ['requestNumber', 'status', 'requestType', 'createdAt', 'ownerAssignee'];
+  readonly pageSizeOptions = [10, 25, 50, 100];
   readonly statuses = REQUEST_STATUSES;
   readonly types = REQUEST_TYPES;
 
@@ -62,10 +69,14 @@ export class RequestsSearchComponent {
   // This is a routed component, so it is constructed after navigation resolves and the
   // first emission already carries the real parameters. In the root component the
   // router emits {} first, costing one discarded query per page load.
-  readonly result$ = this.route.queryParams.pipe(
+  // criteria travels with the result so the sort and paginator bindings read the URL
+  // that produced these rows, never the component's own state.
+  readonly view$ = this.route.queryParams.pipe(
     map(params => this.toCriteria(params)),
     tap(criteria => this.fillForm(criteria)),
-    switchMap(criteria => this.requestsService.search(criteria))
+    switchMap(criteria =>
+      this.requestsService.search(criteria).pipe(map(result => ({ criteria, result })))
+    )
   );
 
   constructor() {
@@ -97,10 +108,58 @@ export class RequestsSearchComponent {
     this.navigateFromForm(false);
   }
 
-  // The single way every user action in tasks 12-15 changes the search. Actions
-  // navigate; they never call the service. `fromTextInput` replaces the history entry
-  // so typing does not bury the previous page under one entry per keystroke.
-  navigateTo(criteria: SearchCriteria, fromTextInput: boolean): void {
+  // MatSort is an event source only: it reports the click and this navigates. Wiring
+  // dataSource.sort instead would reorder the 25 rows already in memory — CLAUDE.md §6.
+  onSortChange(sort: Sort): void {
+    this.navigateTo(
+      {
+        ...this.currentCriteria(),
+        // Headers exist only on the allow-listed columns, and matSortDisableClear keeps
+        // the direction out of its empty third state, so both values are always valid.
+        sortBy: sort.active as SortField,
+        sortDir: sort.direction as SortDirection
+      },
+      {}
+    );
+  }
+
+  // MatPaginator is an event source only, for the same reason.
+  onPage(event: PageEvent): void {
+    const current = this.currentCriteria();
+
+    this.navigateTo(
+      // Second and last place the 0-based/1-based conversion happens; the first is
+      // [pageIndex] in the template.
+      { ...current, page: event.pageIndex + 1, pageSize: event.pageSize },
+      // MatPaginator raises (page) for a page-size change as well. Only a genuine move
+      // between pages keeps the page number.
+      { paging: event.pageSize === current.pageSize }
+    );
+  }
+
+  private navigateFromForm(fromTextInput: boolean): void {
+    const value = this.form.getRawValue();
+
+    this.navigateTo(
+      {
+        ...this.currentCriteria(),
+        requestNumber: value.requestNumber || null,
+        status: value.status,
+        requestType: value.requestType || null,
+        fromDate: toUtcIso(value.fromDate),
+        toDate: toUtcIso(value.toDate)
+      },
+      { fromTextInput }
+    );
+  }
+
+  // The single way every user action changes the search. Actions navigate; they never
+  // call the service. `fromTextInput` replaces the history entry so typing does not bury
+  // the previous page under one entry per keystroke.
+  private navigateTo(
+    criteria: SearchCriteria,
+    options: { fromTextInput?: boolean; paging?: boolean }
+  ): void {
     this.router.navigate([], {
       relativeTo: this.route,
       // Built complete every time. queryParamsHandling: 'merge' would leave a cleared
@@ -113,34 +172,20 @@ export class RequestsSearchComponent {
         toDate: criteria.toDate || undefined,
         sortBy: criteria.sortBy,
         sortDir: criteria.sortDir,
-        page: criteria.page,
+        // Decision 015. A page number is a position inside one specific ordering, so
+        // anything that changes the ordering or the matching set invalidates it: a
+        // filter change, a sort field, a sort-direction flip, a page-size change. Paging
+        // is the only exception. The rule lives here, in the one place that builds the
+        // params, so no caller can forget it.
+        page: options.paging === true ? criteria.page : 1,
         pageSize: criteria.pageSize
       },
-      replaceUrl: fromTextInput
+      replaceUrl: options.fromTextInput === true
     });
   }
 
-  private navigateFromForm(fromTextInput: boolean): void {
-    const current = this.toCriteria(this.route.snapshot.queryParams);
-    const value = this.form.getRawValue();
-
-    this.navigateTo(
-      {
-        requestNumber: value.requestNumber || null,
-        status: value.status,
-        requestType: value.requestType || null,
-        fromDate: toUtcIso(value.fromDate),
-        toDate: toUtcIso(value.toDate),
-        sortBy: current.sortBy,
-        sortDir: current.sortDir,
-        // Decision 015: a filter change resets paging. Change a filter while on page 7
-        // and the server correctly returns an empty page, so the user reads
-        // "no results" for a set that has forty.
-        page: 1,
-        pageSize: current.pageSize
-      },
-      fromTextInput
-    );
+  private currentCriteria(): SearchCriteria {
+    return this.toCriteria(this.route.snapshot.queryParams);
   }
 
   // emitEvent: false, or filling the form counts as a form change, which writes the
