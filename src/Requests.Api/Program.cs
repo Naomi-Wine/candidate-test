@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Requests.Api;
 using Requests.Application;
 using Requests.Application.Common;
 using Requests.Infrastructure;
@@ -10,6 +11,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<ApiExceptionHandler>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddApplication();
@@ -34,6 +37,9 @@ builder.Services.AddCors(options =>
         .WithMethods("GET")));
 
 var app = builder.Build();
+
+// First in the pipeline, so it also wins over the Development exception page.
+app.UseExceptionHandler();
 
 using (var scope = app.Services.CreateScope())
 {
