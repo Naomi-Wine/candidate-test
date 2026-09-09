@@ -722,8 +722,15 @@ and after each one.
    distinguishable from the loading state.
 
 **Done when.** All three states are reachable and visually distinct. Demonstrate the error
-state by requesting an invalid `sortBy` directly in the URL, and the `401` by switching to
-a non-existent user id.
+state by requesting an invalid filter value directly in the URL (`?status=Bogus`), and the
+`401` by switching to a non-existent user id.
+
+> An invalid `sortBy` cannot reach the server: task 11 item 5 and decision 015 replace an
+> unknown sort field with the default rather than sending it, because sorting changes only
+> the order of rows and a shared link with a stale sort field should still open a working
+> page. An invalid *filter* value changes which rows come back, so it is forwarded
+> deliberately and returns `400` with `ProblemDetails` — that is what demonstrates the
+> error state.
 
 **Verify.** Reach each of the three states in the browser and report how you triggered
 each one and what was displayed.
