@@ -16,6 +16,7 @@ public class RequestsController : ControllerBase
 
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<RequestDto>>> Get(
+        [FromQuery] RequestFilterQuery query,
         CancellationToken cancellationToken)
     {
         var result = await _service.GetRequestsAsync(cancellationToken);
