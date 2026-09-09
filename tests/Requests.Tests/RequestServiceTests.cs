@@ -1,3 +1,4 @@
+using Requests.Application.Common;
 using Requests.Application.Requests;
 using Requests.Domain.Entities;
 using Xunit;
@@ -15,9 +16,9 @@ public class RequestServiceTests
             Create(2, ownerId: 3, assignedTo: 4)
         ]);
 
-        var service = new RequestService(repository);
+        var service = new RequestService(repository, new FakeCurrentUser(1, isAdministrator: true));
 
-        var result = await service.GetRequestsAsync(1, true);
+        var result = await service.GetRequestsAsync();
 
         Assert.Equal(2, result.Count);
     }
@@ -32,9 +33,9 @@ public class RequestServiceTests
             Create(3, ownerId: 3, assignedTo: 5)
         ]);
 
-        var service = new RequestService(repository);
+        var service = new RequestService(repository, new FakeCurrentUser(1, isAdministrator: false));
 
-        var result = await service.GetRequestsAsync(1, false);
+        var result = await service.GetRequestsAsync();
 
         Assert.Equal(2, result.Count);
         Assert.DoesNotContain(result, x => x.Id == 3);
@@ -64,5 +65,16 @@ public class RequestServiceTests
 
         public Task<List<Request>> GetAllAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(_requests);
+    }
+
+    private sealed class FakeCurrentUser : ICurrentUser
+    {
+        private readonly CurrentUserInfo _info;
+
+        public FakeCurrentUser(int userId, bool isAdministrator)
+            => _info = new CurrentUserInfo(userId, isAdministrator);
+
+        public Task<CurrentUserInfo> GetAsync(CancellationToken ct = default)
+            => Task.FromResult(_info);
     }
 }

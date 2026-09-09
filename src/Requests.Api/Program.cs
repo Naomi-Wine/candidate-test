@@ -1,6 +1,8 @@
 using System.Text.Json.Serialization;
 using Requests.Application;
+using Requests.Application.Common;
 using Requests.Infrastructure;
+using Requests.Infrastructure.Identity;
 using Requests.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -12,6 +14,18 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure();
+
+builder.Services.AddHttpContextAccessor();
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddScoped<ICurrentUser, HeaderCurrentUser>();
+}
+else
+{
+    throw new InvalidOperationException(
+        "Header-based identity is a development-only stub. " +
+        "Configure JWT authentication before deploying to any non-development environment.");
+}
 
 builder.Services.AddCors(options =>
     options.AddPolicy("AngularClient", policy => policy
