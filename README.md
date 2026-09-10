@@ -6,6 +6,9 @@ permissions. Backend: .NET 8 / ASP.NET Core / EF Core. Frontend: Angular.
 The feature is complete end to end. One defect was found, measured and fixed, and
 the remaining gaps are listed under [What was not completed](#what-was-not-completed).
 
+This repository is Part A. Part B, the architecture design, is submitted
+separately as a PDF.
+
 ---
 
 ## Running it
@@ -293,15 +296,6 @@ A summary of what was built. The reasoning, with alternatives, is decision 010.
 
 ---
 
-## Architecture (Part B)
-
-Microservice decomposition and reliable inter-service communication are covered in
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
-
-<!-- TODO(task 17): one-paragraph summary here, diagram linked. -->
-
----
-
 ## Assumptions
 
 | Assumption | Reasoning |
@@ -364,13 +358,20 @@ changes the contract.
   the debounce issuing one request for six keystrokes, back and forward moving between
   views, the user switch changing `totalCount` from 186 to 500 — but none of it is
   guarded by a test suite. The generated `app.component.spec.ts` was deleted rather than
-  left asserting a placeholder.
-- **`docs/ARCHITECTURE.md`** (Part B) is authored separately and is not part of this
-  build.
+  left asserting a placeholder. Automating exactly those checks end to end is the next
+  step — Playwright against `run.cmd`, which already starts both servers.
 - **The client bundle exceeds Angular's default budget** — roughly 760 kB raw, 165 kB
   transferred, against a 500 kB default, from the Material imports. The build warns. The
   budget was left at its default rather than raised, because raising it hides the number
   without changing it.
+
+---
+
+## AI tooling
+
+Claude Code was used throughout, under the scope rules in [`CLAUDE.md`](CLAUDE.md)
+and the ordered plan in [`TASKS.md`](TASKS.md) — one task at a time, each reviewed
+against those rules before it was committed. Both files are in the repository.
 
 ---
 
@@ -391,6 +392,5 @@ tests/
 client/                     Angular
 docs/
   API-CONTRACT.md           request/response contract
-  ARCHITECTURE.md           Part B
   DECISIONS.he.md           decision log (working document)
 ```

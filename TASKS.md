@@ -836,6 +836,12 @@ summary here, diagram linked. -->` — points at `docs/ARCHITECTURE.md`, which i
 outside this plan. Do not fill it, do not remove it, and do not write that document. It is
 the only TODO that survives this task.
 
+> Part B is delivered as a separate PDF, not as `docs/ARCHITECTURE.md`, so the
+> README's Part B section pointed at a file that does not exist. That section,
+> the repository-layout line and the gaps bullet were all removed, and the TODO
+> with them. No TODO now remains in the README; the "Done when" below predates
+> that.
+
 **Done when.** Exactly one `TODO` remains in `README.md` (the Part B one), and every
 command in the README has been run and works.
 
