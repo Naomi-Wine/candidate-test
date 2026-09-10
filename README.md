@@ -161,6 +161,64 @@ Full reasoning, with the alternatives considered, is in
 
 ---
 
+## Request flow
+
+One search, from the keystroke to the rendered page.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant C as RequestsSearchComponent
+    participant URL as URL (queryParams)
+    participant Http as HttpClient + userIdInterceptor
+    participant Api as RequestsController
+    participant Svc as RequestService
+    participant Who as HeaderCurrentUser
+    participant Db as EF Core IQueryable
+
+    User->>C: types a character
+    C->>C: typing flag on, progress bar shows now
+    Note over C: debounceTime(300) + distinctUntilChanged,<br/>on the text input only
+    C->>URL: router.navigate, complete params, replaceUrl
+
+    URL-->>C: queryParams emits, the only fetch trigger
+    C->>C: tap: setCurrentUserId, fill form emitEvent false, typing flag off
+    C->>Http: switchMap to search(criteria), cancels any in-flight request
+    Http->>Api: GET /api/requests?filter and sort and page, X-User-Id header
+
+    Note over Api: ApiController validates the query first,<br/>invalid input returns 400 ProblemDetails
+    Api->>Svc: SearchAsync(filter)
+    Svc->>Db: Query().AsNoTracking()
+    Svc->>Who: GetAsync()
+    Who->>Db: look up the user by X-User-Id
+    Db-->>Who: role from the database
+    Who-->>Svc: userId and isAdministrator
+
+    Svc->>Db: Where owner or assignee is me, unless administrator
+    Svc->>Db: Where the filters match
+    Svc->>Db: CountAsync()
+    Db-->>Svc: totalCount
+    Svc->>Db: OrderBy, ThenBy Id, Skip, Take, Select
+    Db-->>Svc: one page of RequestDto
+
+    Svc-->>Api: items and totalCount
+    Api-->>Http: 200 PagedResult
+    Http-->>C: result
+    Note over C: catchError sits inside the inner observable,<br/>so an error never completes the outer stream
+    C-->>User: table, paginator and sort arrow, all bound from the URL
+```
+
+The URL is the only trigger: the keystroke changes `queryParams`, and that emission — not
+the keystroke itself — is what starts a fetch, which is why back and forward work without
+any code written for them. Nothing is materialised before the final page is taken:
+`AsNoTracking`, the permission filter, the filters, the count and the ordering all compose
+onto a single `IQueryable`, and the one `ToListAsync` at the end returns a page rather
+than the table. The permission filter is applied before `CountAsync`, so `totalCount`
+reflects only the rows this caller may see and cannot be inflated from the browser.
+
+---
+
 ## Technical decision with alternatives
 
 ### Persistence: EF InMemory vs SQLite
