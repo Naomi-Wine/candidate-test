@@ -3,28 +3,45 @@
 Search, filtering, sorting and paging over a Requests list, with server-enforced
 permissions. Backend: .NET 8 / ASP.NET Core / EF Core. Frontend: Angular.
 
-<!-- TODO(final): one-line note on what was and was not completed. Write last. -->
+The feature is complete end to end. One defect was found and deliberately left in, and
+the remaining gaps are listed under [What was not completed](#what-was-not-completed).
 
 ---
 
 ## Running it
 
-### Backend
+### Quick start
 
-<!-- TODO(task 16): confirm the actual commands and ports. -->
+```
+.\run.cmd     # starts both servers, prints the URL once they answer
+.\stop.cmd    # stops them
+```
+
+The first run also installs the client dependencies, which takes a few minutes.
+
+The manual commands below do the same thing on any platform.
+
+### Backend
 
 ```bash
 dotnet restore
 dotnet run --project src/Requests.Api
 ```
 
-Swagger: `https://localhost:60701/swagger`
+| | |
+|---|---|
+| HTTP | `http://localhost:60702` |
+| HTTPS | `https://localhost:60701` |
+| Swagger | `https://localhost:60701/swagger` |
 
-The database is in-memory and seeded on startup — no setup, no connection string.
+The Angular dev server proxies `/api` to the HTTP port, so both must be running to use
+the app. The database is in-memory and seeded on startup — no setup, no connection
+string. Identity is registered only under `Development`; the API throws at startup in
+any other environment.
 
 ### Frontend
 
-<!-- TODO(task 16): Angular version installed in task 10, and the dev server port. -->
+Angular **19.2.25** (CLI 19.2.27) with Angular Material **19.2.19**.
 
 ```bash
 cd client
@@ -40,19 +57,57 @@ There is no login. The calling user is supplied by an `X-User-Id` header, sent
 automatically by an Angular interceptor; a switcher in the UI changes it so both
 permission paths can be demonstrated.
 
-<!-- TODO(task 16): fill in the seeded user IDs and roles, from task 03. -->
-
 | User ID | Name | Role |
 |---|---|---|
-| | | |
+| 1 | Dana Levi | Standard |
+| 2 | Noa Cohen | Standard |
+| 3 | Yossi Mizrahi | Standard |
+| 4 | Amit Bar | Standard |
+| 5 | Tal Shapira | Standard |
+| 99 | System Administrator | Administrator |
+
+The 500 seeded requests reference owner and assignee ids in the range 1–5, so every
+standard user sees a different, overlapping subset. User 1 sees 186 of the 500; the
+administrator sees all 500.
 
 ### Tests
-
-<!-- TODO(task 16): commands, and what the tests from task 09 actually cover. -->
 
 ```bash
 dotnet test
 ```
+
+**Stop the API first** (`.\stop.cmd`). `dotnet test` builds the solution, and a running
+`Requests.Api.exe` holds a file lock on `Requests.Application.dll` and its siblings. If
+anything needs rebuilding, the copy into `src/Requests.Api/bin` fails with `MSB3021:
+Unable to copy file ... because it is being used by another process` before a single test
+runs. When everything is already built the copy is skipped and it passes, so this is an
+intermittent trap rather than a reliable one — which is the worse kind.
+
+15 tests, all passing. Two are unit tests over `RequestService` with a real
+`DbContext` — the permission boundary for a standard user and for an administrator.
+The rest are integration tests through `WebApplicationFactory`, against the real host
+and the seeded data, because the failure worth guarding against is a filter that
+quietly never reaches the query, and a mocked repository cannot catch that:
+
+| What it pins | |
+|---|---|
+| A standard user sees only rows they own or are assigned, **and `totalCount` counts only those** | The count assertion is the point: it fails if the permission filter is applied after `CountAsync` |
+| An administrator sees every seeded request | And is served at least one row the standard user is denied |
+| `status` and a date range combine, and the whole of the final day is included | Pins `CreatedAt < toDate.AddDays(1)` rather than an exclusive instant |
+| Every invalid input in the contract's error table returns `400` with `ProblemDetails` | One `[Theory]`, five cases: unknown enum, `sortBy` outside the allow-list, `pageSize` over the ceiling, `page` below 1, `fromDate` after `toDate` |
+| Every identity failure returns `401` | One `[Theory]`, four cases. The missing-header case matters most: it pins that no identity is rejected rather than silently becoming user 1 |
+| Page 1 and page 2 together equal a single 50-row read | `Skip`/`Take` is exact — nothing repeated at the boundary, nothing dropped |
+
+**What the paging test does not cover.** It pins that `Skip`/`Take` is exact. It does
+**not** pin the `.ThenBy(r => r.Id)` tie-breaker: removing that line leaves the whole
+suite green, because EF Core InMemory executes `OrderBy` as a LINQ-to-Objects sort,
+which is stable, so tied rows keep insertion order either way. The instability the
+tie-breaker guards against belongs to real database engines, where the order among tied
+rows is unspecified. Catching it would need a provider that reorders ties.
+
+The other cases were checked the same way and do have teeth: moving the permission
+filter after `CountAsync`, and treating `toDate` as an exclusive instant, each made
+exactly the matching test fail.
 
 ---
 
@@ -144,6 +199,42 @@ a practical concern here.
 
 ---
 
+## Permissions and identity
+
+A summary of what was built. The reasoning, with alternatives, is decision 010.
+
+- **The role is read from the database.** The client sends an id and nothing else. It
+  never sends, stores or infers a role.
+- **`X-Is-Admin` was removed.** The starter trusted that header, which means any caller
+  could grant themselves administrator by setting it. A permission the client declares is
+  not a permission, and the brief requires enforcement server-side.
+- **`UserRole` is an enum, not a bool.** A role grows; `IsAdmin` does not. A third role
+  is a new enum member rather than a second flag and a rule about how the two combine.
+- **The permission filter is applied to the `IQueryable` before the count and before
+  paging**, so `totalCount` reflects only rows the caller may see and cannot be inflated
+  from the client. A test pins this specifically, by paging through everything a standard
+  user can reach and asserting the collected count equals `totalCount`.
+- **`X-User-Id` is a development-only identity stub, not authentication.** It is an
+  unverified claim. In production the id would arrive as a claim inside a signed JWT, and
+  the parsing would be replaced by the authentication middleware. The stub is registered
+  only under `IsDevelopment()`, and `Program.cs` throws at startup in any other
+  environment so it cannot reach production by accident.
+- **The user id is in the browser's address bar, and therefore in browser history — but
+  never in the request to the API.** A `queryParams` emission is the only thing allowed to
+  trigger a fetch, so switching user has to be a navigation like every other change, and
+  that puts `userId` in the URL. Decision 002's table names browser history explicitly,
+  alongside access logs and proxies, as somewhere a query string leaks to. So this is a
+  real departure from that decision and is worth saying outright rather than reading the
+  decision narrowly. Three things make it acceptable. `X-User-Id` is an unverified claim
+  that any caller can set by hand — it is not a secret, and disclosing it gives away
+  nothing that was being protected. The value never reaches the API's access logs or an
+  intermediary: the request carries no `userId` parameter, the id still travels in the
+  header, and that is the part decision 002's argument actually buys. And the switcher is
+  a development affordance — on the JWT path the identity comes from the token, there is
+  nothing to switch, and the parameter disappears along with the control.
+
+---
+
 ## Architecture (Part B)
 
 Microservice decomposition and reliable inter-service communication are covered in
@@ -164,21 +255,57 @@ Microservice decomposition and reliable inter-service communication are covered 
 | No login, user management, or password handling | Not requested in any section of the brief. |
 | Material components are UI only, never the source of truth | `MatSort` and `MatPaginator` emit events; the active sort and current page are read from the URL. `MatTableDataSource`'s built-in sorting and pagination are not used, because they operate on the loaded page rather than on the full result set. |
 | Client-side validation is not a security boundary | The sort allow-list is mirrored in the client so the UI does not offer a sort that would fail, and so a shared link with an unknown `sortBy` degrades to the default rather than to an error. Enforcement is server-side and cannot be bypassed from the browser. |
-
-<!-- TODO(final): add assumptions discovered during implementation. -->
+| An invalid *filter* value is forwarded, an invalid *sort* is not | Sorting only changes the order of rows, so a shared link with a stale `sortBy` falls back to the default rather than showing an error screen. Filtering changes *which* rows come back, so `?status=Bogus` is sent and surfaces as a `400` — silently dropping it would return rows the caller did not ask for. |
+| `toDate` covers the whole of its final day | The client sends a date at UTC midnight; the server matches `CreatedAt < toDate.AddDays(1)`. `MatDatepicker` returns a local `Date`, converted to UTC before it enters the URL, or a request created at 01:00 in UTC+3 would land on the previous day. |
+| Paging is offset-based | `Skip`/`Take` over an ordered query, with `.ThenBy(r => r.Id)` as the tie-breaker. Correct at any size, but deep offsets are the known weakness at scale — see below. |
 
 ---
 
 ## What was not completed
 
-<!-- TODO(final). Write this honestly and last, from what actually ran out of time.
+### A defect found and left in
 
-     One line worth keeping, already in docs/API-CONTRACT.md:
-       "At millions of rows, the two things I would profile first are the
-        total-result count, recomputed on every request, and the permission
-        filter, which spans two columns. Neither was optimised here."
+`?page=2147483647&pageSize=100` returns `200` carrying page 1's rows instead of an empty
+page. `(Page - 1) * PageSize` overflows `int` unchecked, so `Skip` is handed a negative
+number and skips nothing. Task 08 gave `page` a lower bound of 1 but no upper bound, so
+the input is accepted. Measured against the running API, not theorised:
 
-     Only keep a claim you would be comfortable being questioned on. -->
+```
+GET /api/requests?page=2147483647&pageSize=100&sortBy=requestNumber&sortDir=asc
+[HTTP 200]   page: 2147483647   pageSize: 100   totalCount: 500   items: 100
+first 3: REQ-000001, REQ-000002, REQ-000003     — identical to page=1
+```
+
+It is a wrong answer served as a success, which is worse than an error. The fix is a
+ceiling on `page`, or `checked` arithmetic so the overflow throws rather than wraps. It is
+recorded here rather than fixed.
+
+### Not optimised
+
+> At millions of rows, the two things I would profile first are the total-result count,
+> recomputed on every request, and the permission filter, which spans two columns.
+> Neither was optimised here.
+
+Offset paging is the third. `Skip(n)` still walks the rows it discards, so page 10,000 is
+slower than page 1 no matter how good the index is; keyset paging is the answer, and it
+changes the contract.
+
+### Gaps
+
+- **The paging test does not pin the tie-breaker.** Explained under [Tests](#tests). The
+  test is still worth having — it pins that `Skip`/`Take` is exact — but it cannot pin
+  what it was named for while the project stays on the InMemory provider.
+- **No client-side tests.** The Angular behaviour was verified in a real browser —
+  the debounce issuing one request for six keystrokes, back and forward moving between
+  views, the user switch changing `totalCount` from 186 to 500 — but none of it is
+  guarded by a test suite. The generated `app.component.spec.ts` was deleted rather than
+  left asserting a placeholder.
+- **`docs/ARCHITECTURE.md`** (Part B) is authored separately and is not part of this
+  build.
+- **The client bundle exceeds Angular's default budget** — roughly 760 kB raw, 165 kB
+  transferred, against a 500 kB default, from the Material imports. The build warns. The
+  budget was left at its default rather than raised, because raising it hides the number
+  without changing it.
 
 ---
 
@@ -187,6 +314,8 @@ Microservice decomposition and reliable inter-service communication are covered 
 ```
 CLAUDE.md                   build rules and scope limits
 TASKS.md                    ordered build plan
+run.cmd, run.ps1            starts both servers (Windows)
+stop.cmd, stop.ps1          stops them again
 src/
   Requests.Domain/          entities, enums
   Requests.Application/     service, DTOs, filter, ICurrentUser
