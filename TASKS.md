@@ -800,6 +800,16 @@ both the rows and `totalCount`.
      unchecked and `Skip` is handed a negative number, which skips nothing. Task 08
      gave `page` a lower bound of 1 but no ceiling, so the input is accepted. It is a
      wrong answer served as a success.
+
+   > This was later fixed rather than only recorded. `page` now carries an upper bound
+   > derived from the `pageSize` ceiling — `int.MaxValue / 100 + 1` = 21474837 — so the
+   > multiplication cannot overflow, and the value is rejected with `400` instead of
+   > silently serving page 1. The README section reads "found, measured and fixed" and
+   > carries the measured boundary; a "left in" wording there would now contradict the
+   > code.
+   > The section was also promoted out of "What was not completed" to a `##` section of
+   > its own, since a fixed defect is not an incomplete one; the numbered list above
+   > predates that.
 6. **"Permissions and identity"** — a short section. **TODO:** cover, briefly:
    - the role is read from the database and is never sent by the client;
    - `X-Is-Admin` was removed because a permission the client declares is not a

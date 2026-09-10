@@ -66,11 +66,15 @@ a `CreatedAt` value can appear on two pages or vanish between requests.
 
 | Parameter | Type | Default | Constraint |
 |---|---|---|---|
-| `page` | int | `1` | 1-based. `< 1` → `400`. |
+| `page` | int | `1` | 1-based. Outside `1..21474837` → `400`. |
 | `pageSize` | int | `25` | `1..100`. Above `100` → `400`. |
 
 The `pageSize` ceiling is enforced server-side. Without it, `?pageSize=99999999`
 defeats paging entirely and is a denial-of-service vector.
+
+The `page` ceiling is derived from it: `Skip((page - 1) * pageSize)` overflows a
+32-bit int past `int.MaxValue / 100 + 1`, wraps negative, and skips nothing —
+returning page 1's rows under a `200`.
 
 ### Repeated parameters
 
@@ -161,7 +165,7 @@ serve any paged endpoint.
 
 | Code | Cause |
 |---|---|
-| `400` | Invalid enum, `sortBy` outside the allow-list, `pageSize` above ceiling, `page < 1`, `fromDate > toDate` |
+| `400` | Invalid enum, `sortBy` outside the allow-list, `pageSize` above ceiling, `page` outside `1..21474837`, `fromDate > toDate` |
 | `401` | `X-User-Id` missing, malformed, or referencing a non-existent user |
 | `500` | Unhandled exception. No internal detail is exposed. |
 

@@ -110,6 +110,7 @@ public sealed class RequestsApiTests : IClassFixture<RequestsApiTests.ApiFactory
     [InlineData("sortBy=ownerName")]
     [InlineData("pageSize=101")]
     [InlineData("page=0")]
+    [InlineData("page=2147483647")]
     [InlineData("fromDate=2030-01-01T00:00:00Z&toDate=2020-01-01T00:00:00Z")]
     public async Task Every_invalid_query_in_the_contract_returns_400_with_a_problem_details_body(string query)
     {

@@ -3,7 +3,7 @@
 Search, filtering, sorting and paging over a Requests list, with server-enforced
 permissions. Backend: .NET 8 / ASP.NET Core / EF Core. Frontend: Angular.
 
-The feature is complete end to end. One defect was found and deliberately left in, and
+The feature is complete end to end. One defect was found, measured and fixed, and
 the remaining gaps are listed under [What was not completed](#what-was-not-completed).
 
 ---
@@ -83,7 +83,7 @@ Unable to copy file ... because it is being used by another process` before a si
 runs. When everything is already built the copy is skipped and it passes, so this is an
 intermittent trap rather than a reliable one — which is the worse kind.
 
-15 tests, all passing. Two are unit tests over `RequestService` with a real
+16 tests, all passing. Two are unit tests over `RequestService` with a real
 `DbContext` — the permission boundary for a standard user and for an administrator.
 The rest are integration tests through `WebApplicationFactory`, against the real host
 and the seeded data, because the failure worth guarding against is a filter that
@@ -94,7 +94,7 @@ quietly never reaches the query, and a mocked repository cannot catch that:
 | A standard user sees only rows they own or are assigned, **and `totalCount` counts only those** | The count assertion is the point: it fails if the permission filter is applied after `CountAsync` |
 | An administrator sees every seeded request | And is served at least one row the standard user is denied |
 | `status` and a date range combine, and the whole of the final day is included | Pins `CreatedAt < toDate.AddDays(1)` rather than an exclusive instant |
-| Every invalid input in the contract's error table returns `400` with `ProblemDetails` | One `[Theory]`, five cases: unknown enum, `sortBy` outside the allow-list, `pageSize` over the ceiling, `page` below 1, `fromDate` after `toDate` |
+| Every invalid input in the contract's error table returns `400` with `ProblemDetails` | One `[Theory]`, six cases: unknown enum, `sortBy` outside the allow-list, `pageSize` over the ceiling, `page` below 1, `page` above the ceiling, `fromDate` after `toDate` |
 | Every identity failure returns `401` | One `[Theory]`, four cases. The missing-header case matters most: it pins that no identity is rejected rather than silently becoming user 1 |
 | Page 1 and page 2 together equal a single 50-row read | `Skip`/`Take` is exact — nothing repeated at the boundary, nothing dropped |
 
@@ -319,24 +319,31 @@ Microservice decomposition and reliable inter-service communication are covered 
 
 ---
 
+## A defect found, measured and fixed
+
+`?page=2147483647&pageSize=100` used to return `200` carrying page 1's rows instead of an
+empty page: `(Page - 1) * PageSize` overflowed `int` unchecked, so `Skip` was handed a
+negative number and skipped nothing — a wrong answer served as a success, which is worse
+than an error. `page` had a lower bound of 1 but no upper bound, so the value passed
+validation.
+
+The fix is the upper bound, derived from the `pageSize` ceiling rather than picked:
+`Skip` cannot overflow while `(page - 1) * 100 <= int.MaxValue`, which caps `page` at
+`int.MaxValue / 100 + 1` = 21474837. Measured against the running API:
+
+```
+?page=2147483647&pageSize=100  -> 400  {"errors":{"page":["'page' must be between 1 and 21474837."]}}
+?page=21474838&pageSize=100    -> 400  same message — one past the ceiling
+?page=21474837&pageSize=100    -> 200  {"items":[],"totalCount":186,...}  the last page that fits
+?page=1&pageSize=100           -> 200  100 items, totalCount 186
+```
+
+The boundary case is the one that matters: the last accepted page returns an *empty* page,
+not page 1's rows.
+
+---
+
 ## What was not completed
-
-### A defect found and left in
-
-`?page=2147483647&pageSize=100` returns `200` carrying page 1's rows instead of an empty
-page. `(Page - 1) * PageSize` overflows `int` unchecked, so `Skip` is handed a negative
-number and skips nothing. Task 08 gave `page` a lower bound of 1 but no upper bound, so
-the input is accepted. Measured against the running API, not theorised:
-
-```
-GET /api/requests?page=2147483647&pageSize=100&sortBy=requestNumber&sortDir=asc
-[HTTP 200]   page: 2147483647   pageSize: 100   totalCount: 500   items: 100
-first 3: REQ-000001, REQ-000002, REQ-000003     — identical to page=1
-```
-
-It is a wrong answer served as a success, which is worse than an error. The fix is a
-ceiling on `page`, or `checked` arithmetic so the overflow throws rather than wraps. It is
-recorded here rather than fixed.
 
 ### Not optimised
 

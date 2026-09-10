@@ -38,8 +38,11 @@ public sealed class RequestFilterQuery : IValidatableObject
     [FromQuery(Name = "sortDir")]
     public string SortDir { get; set; } = "desc";
 
+    // Upper bound derived from the pageSize ceiling below: Skip((Page - 1) * PageSize)
+    // overflows int past this, wraps negative, and skips nothing — a wrong answer served
+    // as a 200. {1} and {2} render the bounds, so the message follows the attribute.
     [FromQuery(Name = "page")]
-    [Range(1, int.MaxValue, ErrorMessage = "'page' must be 1 or greater.")]
+    [Range(1, int.MaxValue / 100 + 1, ErrorMessage = "'page' must be between {1} and {2}.")]
     public int Page { get; set; } = 1;
 
     // The ceiling is a security control, not a nicety: without it ?pageSize=99999999
